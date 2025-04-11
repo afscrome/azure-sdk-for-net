@@ -99,6 +99,10 @@ namespace Azure.AI.Projects.Custom.Utility
                 if (element.TryGetInt64(out long val))
                     return val;
             }
+            else if (type == typeof(object))
+            {
+                return element.GetString() ?? "";
+            }
             else if (IsDictionaryType(type))
             {
                 Type[] genericArguments = type.GetGenericArguments();
