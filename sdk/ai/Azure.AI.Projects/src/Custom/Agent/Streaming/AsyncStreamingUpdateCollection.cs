@@ -4,13 +4,9 @@
 using System;
 using System.ClientModel;
 using System.ClientModel.Primitives;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Net.ServerSentEvents;
-using System.Reflection;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.AI.Projects.Custom.Utility;
@@ -27,7 +23,7 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
 {
     private readonly Func<Task<Response>> _sendRequestAsync;
     private readonly CancellationToken _cancellationToken;
-    private readonly StreamingAdapter? _streamingAdapter;
+    private readonly ToolCallsAdapter _toolCallsAdapter;
     private readonly Func<ThreadRun, IEnumerable<ToolOutput>, AsyncCollectionResult<StreamingUpdate>> _submitToolOutputsToStreamAsync;
     private readonly Func<string, ThreadRun> _getClientRun;
 
@@ -44,8 +40,7 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
         _sendRequestAsync = sendRequestAsync;
         _submitToolOutputsToStreamAsync = submitToolOutputsToStreamAsync;
         _getClientRun = getClientRun;
-        if (delegates != null)
-            _streamingAdapter = new(delegates);
+        _toolCallsAdapter = new(delegates);
     }
 
     public override ContinuationToken? GetContinuationToken(ClientResult page)
@@ -71,7 +66,7 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
         List<ToolOutput> toolOutputs = new();
         while (await enumerator.MoveNextAsync().ConfigureAwait(false))
         {
-            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _streamingAdapter != null)
+            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _toolCallsAdapter.EnableAutoToolCalls)
             {
                 // I want to move the code below and the big chagne into the SDK
                 ThreadRun streamRun = submitToolOutputsUpdate.Value;
@@ -79,7 +74,7 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
                 while (streamRun.Status == RunStatus.RequiresAction)
                 {
                     toolOutputs.Add(
-                        _streamingAdapter.GetResolvedToolOutput(
+                        _toolCallsAdapter.GetResolvedToolOutput(
                             newActionUpdate.FunctionName,
                             newActionUpdate.ToolCallId,
                             newActionUpdate.FunctionArguments
@@ -91,7 +86,7 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
                         {
                             newActionUpdate = newAction;
                             toolOutputs.Add(
-                                _streamingAdapter.GetResolvedToolOutput(
+                                _toolCallsAdapter.GetResolvedToolOutput(
                                     newActionUpdate.FunctionName,
                                     newActionUpdate.ToolCallId,
                                     newActionUpdate.FunctionArguments
