@@ -16,6 +16,13 @@ namespace Azure.AI.Projects;
 
 public partial class AgentsClient
 {
+    private Dictionary<string, Delegate> _delegates;
+
+    public void EnableAutoFunctionCalls(Dictionary<string, Delegate> delegates)
+    {
+        _delegates = delegates;
+    }
+
     /// <summary>
     /// Begins a new streaming <see cref="ThreadRun"/> that evaluates a <see cref="AgentThread"/> using a specified
     /// <see cref="Agent"/>.
@@ -88,8 +95,17 @@ public partial class AgentsClient
 
         async Task<Response> sendRequestAsync() =>
             await CreateRunStreamingAsync(threadId, createRunRequest.ToRequestContent(), context).ConfigureAwait(false);
+        AsyncCollectionResult<StreamingUpdate> submitToolOutputsToStreamAsync(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
+            this.SubmitToolOutputsToStreamAsync(run, toolOutputs);
 
-        return new AsyncStreamingUpdateCollection(sendRequestAsync, cancellationToken);
+        ThreadRun getClientRun(string runId) => this.GetRun(threadId, runId);
+
+        return new AsyncStreamingUpdateCollection(
+            cancellationToken,
+        _delegates,
+        sendRequestAsync,
+        submitToolOutputsToStreamAsync,
+        getClientRun);
     }
 
     /// <summary>
@@ -163,7 +179,17 @@ public partial class AgentsClient
         RequestContext context = FromCancellationToken(cancellationToken);
 
         Response sendRequest() => CreateRunStreaming(threadId, createRunRequest.ToRequestContent(), context);
-        return new StreamingUpdateCollection(sendRequest, cancellationToken);
+        CollectionResult<StreamingUpdate> submitToolOutputsToStream(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
+            this.SubmitToolOutputsToStream(run, toolOutputs);
+
+        ThreadRun getClientRun(string runId) => this.GetRun(threadId, runId);
+
+        return new StreamingUpdateCollection(
+            cancellationToken,
+        _delegates,
+        sendRequest,
+        submitToolOutputsToStream,
+        getClientRun);
     }
     /// <summary> Submits outputs from tools as requested by tool calls in a stream. Stream updates that need submitted tool outputs will have a status of 'RunStatus.RequiresAction'. </summary>
     /// <param name="run"> The <see cref="ThreadRun"/> that the tool outputs should be submitted to. </param>
@@ -180,7 +206,17 @@ public partial class AgentsClient
         SubmitToolOutputsToRunRequest submitToolOutputsToRunRequest = new(toolOutputs.ToList(), true, null);
         RequestContext context = FromCancellationToken(cancellationToken);
         Response sendRequest() => SubmitToolOutputsInternal(run.ThreadId, run.Id, true, submitToolOutputsToRunRequest.ToRequestContent(), context);
-        return new StreamingUpdateCollection(sendRequest, cancellationToken);
+        CollectionResult<StreamingUpdate> submitToolOutputsToStream(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
+            this.SubmitToolOutputsToStream(run, toolOutputs);
+
+        ThreadRun getClientRun(string runId) => this.GetRun(run.ThreadId, runId);
+
+        return new StreamingUpdateCollection(
+            cancellationToken,
+        _delegates,
+        sendRequest,
+        submitToolOutputsToStream,
+        getClientRun);
     }
 
     /// <summary> Submits outputs from tools as requested by tool calls in a stream. Stream updates that need submitted tool outputs will have a status of 'RunStatus.RequiresAction'. </summary>
@@ -198,7 +234,17 @@ public partial class AgentsClient
         SubmitToolOutputsToRunRequest submitToolOutputsToRunRequest = new(toolOutputs.ToList(), true, null);
         RequestContext context = FromCancellationToken(cancellationToken);
         async Task<Response> sendRequestAsync() => await SubmitToolOutputsInternalAsync(run.ThreadId, run.Id, true, submitToolOutputsToRunRequest.ToRequestContent(), context).ConfigureAwait(false);
-        return new AsyncStreamingUpdateCollection(sendRequestAsync, cancellationToken);
+        AsyncCollectionResult<StreamingUpdate> submitToolOutputsToStreamAsync(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
+            this.SubmitToolOutputsToStreamAsync(run, toolOutputs);
+
+        ThreadRun getClientRun(string runId) => this.GetRun(run.ThreadId, runId);
+
+        return new AsyncStreamingUpdateCollection(
+            cancellationToken,
+        _delegates,
+        sendRequestAsync,
+        submitToolOutputsToStreamAsync,
+        getClientRun);
     }
 
     internal async Task<Response> CreateRunStreamingAsync(string threadId, RequestContent content, RequestContext context = null)

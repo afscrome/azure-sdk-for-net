@@ -8,6 +8,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Net.ServerSentEvents;
 using System.Threading;
+using System.Threading.Tasks;
+using Azure.AI.Projects.Custom.Utility;
 
 #nullable enable
 
@@ -20,15 +22,25 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
 {
     private readonly Func<Response> _sendRequest;
     private readonly CancellationToken _cancellationToken;
+    private readonly StreamingAdapter? _streamingAdapter;
+    private readonly Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> _submitToolOutputsToStream;
+    private readonly Func<string, ThreadRun> _getClientRun;
 
     public StreamingUpdateCollection(
+        CancellationToken cancellationToken,
+        Dictionary<string, Delegate> delegates,
         Func<Response> sendRequest,
-        CancellationToken cancellationToken)
+        Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> submitToolOutputsToStream,
+        Func<string, ThreadRun> getClientRun)
     {
         Argument.AssertNotNull(sendRequest, nameof(sendRequest));
 
-        _sendRequest = sendRequest;
         _cancellationToken = cancellationToken;
+        _sendRequest = sendRequest;
+        _submitToolOutputsToStream = submitToolOutputsToStream;
+        _getClientRun = getClientRun;
+        if (delegates != null)
+            _streamingAdapter = new(delegates);
     }
 
     public override ContinuationToken? GetContinuationToken(ClientResult page)
@@ -46,9 +58,51 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
     }
     protected override IEnumerable<StreamingUpdate> GetValuesFromPage(ClientResult page)
     {
+#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
         using IEnumerator<StreamingUpdate> enumerator = new StreamingUpdateEnumerator(page, _cancellationToken);
+#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
+
+        List<ToolOutput> toolOutputs = new();
         while (enumerator.MoveNext())
         {
+            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _streamingAdapter != null)
+            {
+                // I want to move the code below and the big chagne into the SDK
+                ThreadRun streamRun = submitToolOutputsUpdate.Value;
+                RequiredActionUpdate newActionUpdate = submitToolOutputsUpdate;
+                while (streamRun.Status == RunStatus.RequiresAction)
+                {
+                    toolOutputs.Add(
+                        _streamingAdapter.GetResolvedToolOutput(
+                            newActionUpdate.FunctionName,
+                            newActionUpdate.ToolCallId,
+                            newActionUpdate.FunctionArguments
+                    ));
+#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
+                    foreach (StreamingUpdate actionUpdate in _submitToolOutputsToStream(streamRun, toolOutputs))
+                    {
+                        if (actionUpdate is RequiredActionUpdate newAction)
+                        {
+                            newActionUpdate = newAction;
+                            toolOutputs.Add(
+                                _streamingAdapter.GetResolvedToolOutput(
+                                    newActionUpdate.FunctionName,
+                                    newActionUpdate.ToolCallId,
+                                    newActionUpdate.FunctionArguments
+                                )
+                            );
+                        }
+                        else
+                        {
+                            yield return actionUpdate;
+                        }
+                    }
+#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
+                    streamRun = _getClientRun(streamRun.Id);
+                    toolOutputs.Clear();
+                }
+                break;
+            }
             yield return enumerator.Current;
         }
     }
