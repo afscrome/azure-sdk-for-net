@@ -9,15 +9,26 @@ using System.Text.Json;
 namespace Azure.AI.Projects.Custom.Utility
 {
     /// <summary>
-    /// StreamingAdapter is used to resolve tool calls in the streaming API.
+    /// ToolCallsAdapter is used to resolve tool calls in the streaming API.
     /// </summary>
-    internal class StreamingAdapter
+    internal class ToolCallsAdapter
     {
         private readonly Dictionary<string, Delegate> _delegates = new();
 
-        internal StreamingAdapter(Dictionary<string, Delegate> delegates)
+        internal ToolCallsAdapter(Dictionary<string, Delegate> delegates)
         {
             _delegates = delegates;
+        }
+
+        /// <summary>
+        /// Indicates whether auto tool calls are enabled.
+        /// </summary>
+        public bool EnableAutoToolCalls
+        {
+            get
+            {
+                return _delegates.Count > 0;
+            }
         }
 
         /// <summary>
@@ -25,6 +36,8 @@ namespace Azure.AI.Projects.Custom.Utility
         /// </summary>
         public ToolOutput GetResolvedToolOutput(string functionName, string toolCallId, string functionArguments)
         {
+            if (!EnableAutoToolCalls)
+                throw new InvalidOperationException("Auto tool calls are not enabled.");
             if (_delegates.TryGetValue(functionName, out var func))
             {
                 JsonDocument argumentsJson = JsonDocument.Parse(functionArguments);

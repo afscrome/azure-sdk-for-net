@@ -5,22 +5,29 @@ using System;
 using System.ClientModel;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using Azure.Core;
 using Azure.Core.Pipeline;
-using System.IO;
 
 namespace Azure.AI.Projects;
 
 public partial class AgentsClient
 {
-    private Dictionary<string, Delegate> _delegates;
+    private Dictionary<string, Delegate> _delegates = new();
 
+    /// <summary>
+    /// Enables auto tool calls to be executed automatically during streaming.  If this is not set, function must be called manually.
+    /// </summary>
+    /// <param name="delegates">Dictionary in name and delegate in pair</param>
     public void EnableAutoFunctionCalls(Dictionary<string, Delegate> delegates)
     {
-        _delegates = delegates;
+        _delegates.Clear();
+
+        foreach (var kvp in delegates)
+        {
+            _delegates[kvp.Key] = kvp.Value;
+        }
     }
 
     /// <summary>

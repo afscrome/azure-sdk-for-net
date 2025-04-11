@@ -22,7 +22,7 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
 {
     private readonly Func<Response> _sendRequest;
     private readonly CancellationToken _cancellationToken;
-    private readonly StreamingAdapter? _streamingAdapter;
+    private readonly ToolCallsAdapter _toolCallsAdapter;
     private readonly Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> _submitToolOutputsToStream;
     private readonly Func<string, ThreadRun> _getClientRun;
 
@@ -39,8 +39,7 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
         _sendRequest = sendRequest;
         _submitToolOutputsToStream = submitToolOutputsToStream;
         _getClientRun = getClientRun;
-        if (delegates != null)
-            _streamingAdapter = new(delegates);
+        _toolCallsAdapter = new(delegates);
     }
 
     public override ContinuationToken? GetContinuationToken(ClientResult page)
@@ -65,7 +64,7 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
         List<ToolOutput> toolOutputs = new();
         while (enumerator.MoveNext())
         {
-            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _streamingAdapter != null)
+            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _toolCallsAdapter.EnableAutoToolCalls)
             {
                 // I want to move the code below and the big chagne into the SDK
                 ThreadRun streamRun = submitToolOutputsUpdate.Value;
@@ -73,7 +72,7 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
                 while (streamRun.Status == RunStatus.RequiresAction)
                 {
                     toolOutputs.Add(
-                        _streamingAdapter.GetResolvedToolOutput(
+                        _toolCallsAdapter.GetResolvedToolOutput(
                             newActionUpdate.FunctionName,
                             newActionUpdate.ToolCallId,
                             newActionUpdate.FunctionArguments
@@ -85,7 +84,7 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
                         {
                             newActionUpdate = newAction;
                             toolOutputs.Add(
-                                _streamingAdapter.GetResolvedToolOutput(
+                                _toolCallsAdapter.GetResolvedToolOutput(
                                     newActionUpdate.FunctionName,
                                     newActionUpdate.ToolCallId,
                                     newActionUpdate.FunctionArguments
