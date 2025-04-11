@@ -59,54 +59,43 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
 
     protected async override IAsyncEnumerable<StreamingUpdate> GetValuesFromPageAsync(ClientResult page)
     {
-#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
-        await using IAsyncEnumerator<StreamingUpdate> enumerator = new AsyncStreamingUpdateEnumerator(page, _cancellationToken);
-#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
-
+        ThreadRun? streamRun = null;
         List<ToolOutput> toolOutputs = new();
-        while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+        do
         {
-            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _toolCallsAdapter.EnableAutoToolCalls)
-            {
-                // I want to move the code below and the big chagne into the SDK
-                ThreadRun streamRun = submitToolOutputsUpdate.Value;
-                RequiredActionUpdate newActionUpdate = submitToolOutputsUpdate;
-                while (streamRun.Status == RunStatus.RequiresAction)
-                {
-                    toolOutputs.Add(
-                        _toolCallsAdapter.GetResolvedToolOutput(
-                            newActionUpdate.FunctionName,
-                            newActionUpdate.ToolCallId,
-                            newActionUpdate.FunctionArguments
-                    ));
-#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
-                    await foreach (StreamingUpdate actionUpdate in _submitToolOutputsToStreamAsync(streamRun, toolOutputs))
-                    {
-                        if (actionUpdate is RequiredActionUpdate newAction)
-                        {
-                            newActionUpdate = newAction;
-                            toolOutputs.Add(
-                                _toolCallsAdapter.GetResolvedToolOutput(
-                                    newActionUpdate.FunctionName,
-                                    newActionUpdate.ToolCallId,
-                                    newActionUpdate.FunctionArguments
-                                )
-                            );
-                        }
-                        else
-                        {
-                            yield return actionUpdate;
-                        }
-                    }
-#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
-                    streamRun = _getClientRun(streamRun.Id);
-                    toolOutputs.Clear();
-                }
-                break;
-            }
+            IAsyncEnumerator<StreamingUpdate> enumerator = (toolOutputs.Count > 0 && streamRun != null) ?
+                _submitToolOutputsToStreamAsync(streamRun, toolOutputs).GetAsyncEnumerator(_cancellationToken) :
+                new AsyncStreamingUpdateEnumerator(page, _cancellationToken);
 
-            yield return enumerator.Current;
+            toolOutputs.Clear();
+
+            try
+            {
+                while (await enumerator.MoveNextAsync().ConfigureAwait(false))
+                {
+                    var streamingUpdate = enumerator.Current;
+                    if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsAdapter.EnableAutoToolCalls)
+                    {
+                        toolOutputs.Add(
+                            _toolCallsAdapter.GetResolvedToolOutput(
+                                newActionUpdate.FunctionName,
+                                newActionUpdate.ToolCallId,
+                                newActionUpdate.FunctionArguments
+                            ));
+                        streamRun = newActionUpdate.Value;
+                    }
+                    else
+                    {
+                        yield return streamingUpdate;
+                    }
+                }
+            }
+            finally
+            {
+                await enumerator.DisposeAsync().ConfigureAwait(false);
+            }
         }
+        while (toolOutputs.Count > 0);
     }
 
     private sealed class AsyncStreamingUpdateEnumerator : IAsyncEnumerator<StreamingUpdate>

@@ -6,6 +6,7 @@ using System.ClientModel;
 using System.ClientModel.Primitives;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.ServerSentEvents;
 using System.Threading;
 using System.Threading.Tasks;
@@ -57,19 +58,18 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
     }
     protected override IEnumerable<StreamingUpdate> GetValuesFromPage(ClientResult page)
     {
-#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
-        using IEnumerator<StreamingUpdate> enumerator = new StreamingUpdateEnumerator(page, _cancellationToken);
-#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
-
+        ThreadRun? streamRun = null;
         List<ToolOutput> toolOutputs = new();
-        while (enumerator.MoveNext())
+        do
         {
-            if (enumerator.Current is RequiredActionUpdate submitToolOutputsUpdate && _toolCallsAdapter.EnableAutoToolCalls)
+            using IEnumerator<StreamingUpdate> enumerator = (toolOutputs.Count > 0 && streamRun != null) ?
+                _submitToolOutputsToStream(streamRun, toolOutputs).GetEnumerator() :
+                new StreamingUpdateEnumerator(page, _cancellationToken);
+            toolOutputs.Clear();
+            while (enumerator.MoveNext())
             {
-                // I want to move the code below and the big chagne into the SDK
-                ThreadRun streamRun = submitToolOutputsUpdate.Value;
-                RequiredActionUpdate newActionUpdate = submitToolOutputsUpdate;
-                while (streamRun.Status == RunStatus.RequiresAction)
+                var streamingUpdate = enumerator.Current;
+                if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsAdapter.EnableAutoToolCalls)
                 {
                     toolOutputs.Add(
                         _toolCallsAdapter.GetResolvedToolOutput(
@@ -77,33 +77,15 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
                             newActionUpdate.ToolCallId,
                             newActionUpdate.FunctionArguments
                     ));
-#pragma warning disable AZC0100 // ConfigureAwait(false) must be used.
-                    foreach (StreamingUpdate actionUpdate in _submitToolOutputsToStream(streamRun, toolOutputs))
-                    {
-                        if (actionUpdate is RequiredActionUpdate newAction)
-                        {
-                            newActionUpdate = newAction;
-                            toolOutputs.Add(
-                                _toolCallsAdapter.GetResolvedToolOutput(
-                                    newActionUpdate.FunctionName,
-                                    newActionUpdate.ToolCallId,
-                                    newActionUpdate.FunctionArguments
-                                )
-                            );
-                        }
-                        else
-                        {
-                            yield return actionUpdate;
-                        }
-                    }
-#pragma warning restore AZC0100 // ConfigureAwait(false) must be used.
-                    streamRun = _getClientRun(streamRun.Id);
-                    toolOutputs.Clear();
+                    streamRun = newActionUpdate.Value;
                 }
-                break;
+                else
+                {
+                    yield return streamingUpdate;
+                }
             }
-            yield return enumerator.Current;
         }
+        while (toolOutputs.Count > 0);
     }
 
     private sealed class StreamingUpdateEnumerator : IEnumerator<StreamingUpdate>

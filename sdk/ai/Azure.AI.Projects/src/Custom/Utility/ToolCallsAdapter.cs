@@ -57,7 +57,8 @@ namespace Azure.AI.Projects.Custom.Utility
                 }
 
                 var rt = func.DynamicInvoke(args.ToArray());
-                return new ToolOutput(toolCallId, rt?.ToString());
+                var rtInStr = JsonSerializer.Serialize(rt);
+                return new ToolOutput(toolCallId, rtInStr);
             }
             throw new InvalidOperationException($"Function {functionName} not found");
         }
