@@ -38,44 +38,44 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
          parameters: BinaryData.FromObjectAsJson(
          new
          {
-             type = "object",
-             properties = new
+             Type = "object",
+             Properties = new
              {
-                 addresses = new
+                 Addresses = new
                  {
-                     type = "array",
-                     description = "A list of addresses",
-                     items = new
+                     Type = "array",
+                     Description = "A list of addresses",
+                     Items = new
                      {
-                         type = "object",
-                         properties = new
+                         Type = "object",
+                         Properties = new
                          {
-                             street = new
+                             Street = new
                              {
-                                 type = "string",
-                                 description = "Street"
+                                 Type = "string",
+                                 Description = "Street"
                              },
-                             city = new
+                             City = new
                              {
-                                 type = "string",
-                                 description = "city"
+                                 Type = "string",
+                                 Description = "city"
                              },
                          },
-                         required = new[] { "street", "city" }
+                         Required = new[] { "street", "city" }
                      }
                  }
              },
-             required = new[] { "addresses" }
+             Required = new[] { "addresses" }
          },
          new JsonSerializerOptions() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
-    private string[] GetWeatherByAddresses(Dictionary<string, string>[] addresses)
+    private string[] GetWeatherByAddresses(Dictionary<string, string>[] addresses, string unit = "F")
     {
         string[] temps = new string[addresses.Length];
         for (int i = 0; i < addresses.Length; i++)
         {
             if (addresses[i].TryGetValue("city", out string city))
             {
-                temps[i] = (city == "Seattle") ? "20F" : "50F";
+                temps[i] = string.Format("{0}{1}", (city == "Seattle") ? "20" : "50", unit);
             }
             else
             {
@@ -90,34 +90,39 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
          parameters: BinaryData.FromObjectAsJson(
          new
          {
-             type = "object",
-             properties = new
+             Type = "object",
+             Properties = new
              {
-                 addresses = new
+                 Addresses = new
                  {
-                     type = "array",
-                     description = "A list of addresses",
-                     items = new
+                     Type = "array",
+                     Description = "A list of addresses",
+                     Items = new
                      {
-                         type = "object",
-                         properties = new
+                         Type = "object",
+                         Properties = new
                          {
-                             street = new
+                             Street = new
                              {
-                                 type = "string",
-                                 description = "Street"
+                                 Type = "string",
+                                 Description = "Street"
                              },
-                             city = new
+                             City = new
                              {
-                                 type = "string",
+                                 Type = "string",
                                  description = "city"
                              },
                          },
-                         required = new[] { "street", "city" }
+                         Required = new[] { "street", "city" }
                      }
-                 }
+                 },
+                 Unit = new
+                 {
+                     Type = "string",
+                     Enum = new[] { "c", "f" },
+                 },
              },
-             required = new[] { "addresses" }
+             Required = new[] { "addresses" }
          },
          new JsonSerializerOptions() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
 
@@ -162,7 +167,6 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
         delegates.Add(nameof(GetWeatherByAddresses), GetWeatherByAddresses);
         delegates.Add(nameof(GeHhumidityByAddresses), GeHhumidityByAddresses);
         client.EnableAutoFunctionCalls(delegates);
-
         await foreach (StreamingUpdate streamingUpdate in client.CreateRunStreamingAsync(thread.Id, agent.Id))
         {
             if (streamingUpdate.UpdateKind == StreamingUpdateReason.RunCreated)

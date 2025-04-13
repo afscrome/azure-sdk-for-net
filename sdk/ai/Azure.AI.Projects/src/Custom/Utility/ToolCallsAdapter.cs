@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Azure.AI.Projects.Custom.Utility
 {
@@ -33,15 +34,16 @@ namespace Azure.AI.Projects.Custom.Utility
 
         /// <summary>
         /// Resolves the tool call by invoking the delegate associated with the function name.
+        /// It casts the function arguments to the appropriate types based on the delegate's parameters.
+        /// If it fails to resolve the tool call, it returns an empty string as ToolOutput to let agents to continue
+        /// without knowing the answer.
         /// </summary>
         public ToolOutput GetResolvedToolOutput(string functionName, string toolCallId, string functionArguments)
         {
-            if (!EnableAutoToolCalls)
-                throw new InvalidOperationException("Auto tool calls are not enabled.");
-            if (_delegates.TryGetValue(functionName, out var func))
+            if (EnableAutoToolCalls && _delegates.TryGetValue(functionName, out var func))
             {
                 JsonDocument argumentsJson = JsonDocument.Parse(functionArguments);
-                var method = func.Method;
+                MethodInfo method = func.Method;
                 var args = new ArrayList();
                 foreach (ParameterInfo param in func.Method.GetParameters())
                 {
@@ -56,11 +58,19 @@ namespace Azure.AI.Projects.Custom.Utility
                     }
                 }
 
-                var rt = func.DynamicInvoke(args.ToArray());
-                var rtInStr = JsonSerializer.Serialize(rt);
-                return new ToolOutput(toolCallId, rtInStr);
+                try
+                {
+                    var rt = func.DynamicInvoke(args.ToArray());
+                    var rtInStr = JsonSerializer.Serialize(rt);
+                    return new ToolOutput(toolCallId, rtInStr);
+                }
+                catch
+                {
+                    // If the function call fails, we return an empty string as ToolOutput to let agents to continue
+                    // without knowing the answer.
+                }
             }
-            throw new InvalidOperationException($"Function {functionName} not found");
+            return new ToolOutput(toolCallId, "");
         }
 
         private object GetArgumentValue(JsonElement element, Type type)
@@ -112,8 +122,6 @@ namespace Azure.AI.Projects.Custom.Utility
                 var dict = Activator.CreateInstance(dictionaryType);
 
                 MethodInfo addMethod = dictionaryType.GetMethod("Add");
-                if (addMethod == null || dict == null)
-                    throw new Exception();
 
                 foreach (var prop in element.EnumerateObject())
                 {
