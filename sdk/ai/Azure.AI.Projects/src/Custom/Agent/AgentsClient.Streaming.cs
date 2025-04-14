@@ -14,13 +14,13 @@ namespace Azure.AI.Projects;
 
 public partial class AgentsClient
 {
-    private Dictionary<string, Delegate> _delegates = new();
+    private readonly Dictionary<string, Delegate> _delegates = new();
 
     /// <summary>
     /// Enables auto tool calls to be executed automatically during streaming.  If this is not set, function must be called manually.
     /// </summary>
     /// <param name="delegates">Dictionary in name and delegate in pair</param>
-    public void EnableAutoFunctionCalls(Dictionary<string, Delegate> delegates)
+    public virtual void EnableAutoFunctionCalls(Dictionary<string, Delegate> delegates)
     {
         _delegates.Clear();
 
@@ -28,6 +28,14 @@ public partial class AgentsClient
         {
             _delegates[kvp.Key] = kvp.Value;
         }
+    }
+
+    /// <summary>
+    /// Disables auto tool calls to be executed automatically during streaming.
+    /// </summary>
+    public virtual void DisableAutoFunctionCalls()
+    {
+        _delegates.Clear();
     }
 
     /// <summary>
@@ -105,14 +113,11 @@ public partial class AgentsClient
         AsyncCollectionResult<StreamingUpdate> submitToolOutputsToStreamAsync(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
             this.SubmitToolOutputsToStreamAsync(run, toolOutputs);
 
-        ThreadRun getClientRun(string runId) => this.GetRun(threadId, runId);
-
         return new AsyncStreamingUpdateCollection(
             cancellationToken,
         _delegates,
         sendRequestAsync,
-        submitToolOutputsToStreamAsync,
-        getClientRun);
+        submitToolOutputsToStreamAsync);
     }
 
     /// <summary>
@@ -189,14 +194,11 @@ public partial class AgentsClient
         CollectionResult<StreamingUpdate> submitToolOutputsToStream(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
             this.SubmitToolOutputsToStream(run, toolOutputs);
 
-        ThreadRun getClientRun(string runId) => this.GetRun(threadId, runId);
-
         return new StreamingUpdateCollection(
             cancellationToken,
         _delegates,
         sendRequest,
-        submitToolOutputsToStream,
-        getClientRun);
+        submitToolOutputsToStream);
     }
     /// <summary> Submits outputs from tools as requested by tool calls in a stream. Stream updates that need submitted tool outputs will have a status of 'RunStatus.RequiresAction'. </summary>
     /// <param name="run"> The <see cref="ThreadRun"/> that the tool outputs should be submitted to. </param>
@@ -216,14 +218,11 @@ public partial class AgentsClient
         CollectionResult<StreamingUpdate> submitToolOutputsToStream(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
             this.SubmitToolOutputsToStream(run, toolOutputs);
 
-        ThreadRun getClientRun(string runId) => this.GetRun(run.ThreadId, runId);
-
         return new StreamingUpdateCollection(
             cancellationToken,
         _delegates,
         sendRequest,
-        submitToolOutputsToStream,
-        getClientRun);
+        submitToolOutputsToStream);
     }
 
     /// <summary> Submits outputs from tools as requested by tool calls in a stream. Stream updates that need submitted tool outputs will have a status of 'RunStatus.RequiresAction'. </summary>
@@ -244,14 +243,11 @@ public partial class AgentsClient
         AsyncCollectionResult<StreamingUpdate> submitToolOutputsToStreamAsync(ThreadRun run, IEnumerable<ToolOutput> toolOutputs) =>
             this.SubmitToolOutputsToStreamAsync(run, toolOutputs);
 
-        ThreadRun getClientRun(string runId) => this.GetRun(run.ThreadId, runId);
-
         return new AsyncStreamingUpdateCollection(
             cancellationToken,
         _delegates,
         sendRequestAsync,
-        submitToolOutputsToStreamAsync,
-        getClientRun);
+        submitToolOutputsToStreamAsync);
     }
 
     internal async Task<Response> CreateRunStreamingAsync(string threadId, RequestContent content, RequestContext context = null)

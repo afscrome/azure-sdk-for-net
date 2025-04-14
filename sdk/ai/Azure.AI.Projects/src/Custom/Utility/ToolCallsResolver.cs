@@ -5,18 +5,17 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace Azure.AI.Projects.Custom.Utility
 {
     /// <summary>
-    /// ToolCallsAdapter is used to resolve tool calls in the streaming API.
+    /// ToolCallsResolver is used to resolve tool calls in the streaming API.
     /// </summary>
-    internal class ToolCallsAdapter
+    public class ToolCallsResolver
     {
         private readonly Dictionary<string, Delegate> _delegates = new();
 
-        internal ToolCallsAdapter(Dictionary<string, Delegate> delegates)
+        internal ToolCallsResolver(Dictionary<string, Delegate> delegates)
         {
             _delegates = delegates;
         }
@@ -24,7 +23,7 @@ namespace Azure.AI.Projects.Custom.Utility
         /// <summary>
         /// Indicates whether auto tool calls are enabled.
         /// </summary>
-        public bool EnableAutoToolCalls
+        internal bool EnableAutoToolCalls
         {
             get
             {
@@ -38,29 +37,13 @@ namespace Azure.AI.Projects.Custom.Utility
         /// If it fails to resolve the tool call, it returns an empty string as ToolOutput to let agents to continue
         /// without knowing the answer.
         /// </summary>
-        public ToolOutput GetResolvedToolOutput(string functionName, string toolCallId, string functionArguments)
+        internal ToolOutput GetResolvedToolOutput(string functionName, string toolCallId, string functionArguments)
         {
             if (EnableAutoToolCalls && _delegates.TryGetValue(functionName, out var func))
             {
-                JsonDocument argumentsJson = JsonDocument.Parse(functionArguments);
-                MethodInfo method = func.Method;
-                var args = new ArrayList();
-                foreach (ParameterInfo param in func.Method.GetParameters())
-                {
-                    if (argumentsJson.RootElement.TryGetProperty(param.Name ?? "", out JsonElement element))
-                    {
-                        object val = GetArgumentValue(element, param.ParameterType);
-                        args.Add(val);
-                    }
-                    else
-                    {
-                        args.Add(param.DefaultValue);
-                    }
-                }
-
                 try
                 {
-                    var rt = func.DynamicInvoke(args.ToArray());
+                    var rt = Resolve(func, functionArguments);
                     var rtInStr = JsonSerializer.Serialize(rt);
                     return new ToolOutput(toolCallId, rtInStr);
                 }
@@ -73,7 +56,33 @@ namespace Azure.AI.Projects.Custom.Utility
             return new ToolOutput(toolCallId, "");
         }
 
-        private object GetArgumentValue(JsonElement element, Type type)
+        /// <summary>
+        /// Resolves the function call by invoking the delegate associated with the function name.
+        /// </summary>
+        /// <param name="function"></param>
+        /// <param name="functionArguments"></param>
+        /// <returns></returns>
+        public static object Resolve(Delegate function, string functionArguments)
+        {
+            JsonDocument argumentsJson = JsonDocument.Parse(functionArguments);
+            MethodInfo method = function.Method;
+            var args = new ArrayList();
+            foreach (ParameterInfo param in function.Method.GetParameters())
+            {
+                if (argumentsJson.RootElement.TryGetProperty(param.Name ?? "", out JsonElement element))
+                {
+                    object val = GetArgumentValue(element, param.ParameterType);
+                    args.Add(val);
+                }
+                else
+                {
+                    args.Add(param.DefaultValue);
+                }
+            }
+            return function.DynamicInvoke(args.ToArray());
+        }
+
+        private static object GetArgumentValue(JsonElement element, Type type)
         {
             if (type == typeof(string))
             {

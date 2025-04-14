@@ -23,24 +23,21 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
 {
     private readonly Func<Response> _sendRequest;
     private readonly CancellationToken _cancellationToken;
-    private readonly ToolCallsAdapter _toolCallsAdapter;
+    private readonly ToolCallsResolver _toolCallsResolver;
     private readonly Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> _submitToolOutputsToStream;
-    private readonly Func<string, ThreadRun> _getClientRun;
 
     public StreamingUpdateCollection(
         CancellationToken cancellationToken,
         Dictionary<string, Delegate> delegates,
         Func<Response> sendRequest,
-        Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> submitToolOutputsToStream,
-        Func<string, ThreadRun> getClientRun)
+        Func<ThreadRun, IEnumerable<ToolOutput>, CollectionResult<StreamingUpdate>> submitToolOutputsToStream)
     {
         Argument.AssertNotNull(sendRequest, nameof(sendRequest));
 
         _cancellationToken = cancellationToken;
         _sendRequest = sendRequest;
         _submitToolOutputsToStream = submitToolOutputsToStream;
-        _getClientRun = getClientRun;
-        _toolCallsAdapter = new(delegates);
+        _toolCallsResolver = new(delegates);
     }
 
     public override ContinuationToken? GetContinuationToken(ClientResult page)
@@ -69,10 +66,10 @@ internal class StreamingUpdateCollection : CollectionResult<StreamingUpdate>
             while (enumerator.MoveNext())
             {
                 var streamingUpdate = enumerator.Current;
-                if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsAdapter.EnableAutoToolCalls)
+                if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsResolver.EnableAutoToolCalls)
                 {
                     toolOutputs.Add(
-                        _toolCallsAdapter.GetResolvedToolOutput(
+                        _toolCallsResolver.GetResolvedToolOutput(
                             newActionUpdate.FunctionName,
                             newActionUpdate.ToolCallId,
                             newActionUpdate.FunctionArguments

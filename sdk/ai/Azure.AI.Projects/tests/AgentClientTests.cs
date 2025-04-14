@@ -9,6 +9,7 @@ using System.Net.Security;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Azure.Core;
 using Azure.Core.TestFramework;
@@ -638,6 +639,69 @@ namespace Azure.AI.Projects.Tests
             PageableList<ThreadMessage> messages = await client.GetMessagesAsync(toolRun.ThreadId, toolRun.Id);
             Assert.Greater(messages.Data.Count, 1);
             Assert.AreEqual(parallelToolCalls, toolRun.ParallelToolCalls);
+        }
+
+        [RecordedTest]
+        public async Task TestAutomaticSubmitToolOutputs()
+        {
+            int GetHumidityByAddress(string address)
+            {
+                return address.Contains("Seattle") ? 60 : 80;
+            }
+
+            FunctionToolDefinition geHhumidityByAddressTool = new(
+                 name: "GetHumidityByAddress",
+                 description: "Get humidity by address",
+                 parameters: BinaryData.FromObjectAsJson(
+                 new
+                 {
+                     Type = "object",
+                     Properties = new
+                     {
+                         Address = new
+                         {
+                             Type = "string",
+                             Description = "Address"
+                         }
+                     },
+                     Required = new[] { "address" }
+                 },
+                 new JsonSerializerOptions() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+
+            AgentsClient client = GetClient();
+            Agent agent = await client.CreateAgentAsync(
+                model: "gpt-4o-mini",
+                name: AGENT_NAME,
+                instructions: "Use the provided functions to help answer questions.",
+                tools: new List<ToolDefinition> { geHhumidityByAddressTool }
+            );
+            AgentThread thread = await client.CreateThreadAsync();
+
+            ThreadMessage message = await client.CreateMessageAsync(
+                thread.Id,
+                MessageRole.User,
+                "Get humidity for address, 456 2nd Ave in city, Seattle");
+
+            Dictionary<string, Delegate> delegates = new();
+            delegates.Add(nameof(GetHumidityByAddress), GetHumidityByAddress);
+            client.EnableAutoFunctionCalls(delegates);
+
+            string output = "";
+            bool completed = false;
+            await foreach (StreamingUpdate streamingUpdate in client.CreateRunStreamingAsync(thread.Id, agent.Id))
+            {
+                if (streamingUpdate is MessageContentUpdate contentUpdate)
+                {
+                    output += contentUpdate.Text;
+                }
+                else if (streamingUpdate.UpdateKind == StreamingUpdateReason.RunCompleted)
+                {
+                    completed = true;
+                }
+            }
+
+            Assert.True(output.Contains("60"));
+            Assert.True(completed);
         }
 
         [RecordedTest]

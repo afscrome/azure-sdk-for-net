@@ -23,24 +23,21 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
 {
     private readonly Func<Task<Response>> _sendRequestAsync;
     private readonly CancellationToken _cancellationToken;
-    private readonly ToolCallsAdapter _toolCallsAdapter;
+    private readonly ToolCallsResolver _toolCallsResolver;
     private readonly Func<ThreadRun, IEnumerable<ToolOutput>, AsyncCollectionResult<StreamingUpdate>> _submitToolOutputsToStreamAsync;
-    private readonly Func<string, ThreadRun> _getClientRun;
 
     public AsyncStreamingUpdateCollection(
         CancellationToken cancellationToken,
         Dictionary<string, Delegate> delegates,
         Func<Task<Response>> sendRequestAsync,
-        Func<ThreadRun, IEnumerable<ToolOutput>, AsyncCollectionResult<StreamingUpdate>> submitToolOutputsToStreamAsync,
-        Func<string, ThreadRun> getClientRun)
+        Func<ThreadRun, IEnumerable<ToolOutput>, AsyncCollectionResult<StreamingUpdate>> submitToolOutputsToStreamAsync)
     {
         Argument.AssertNotNull(sendRequestAsync, nameof(sendRequestAsync));
 
         _cancellationToken = cancellationToken;
         _sendRequestAsync = sendRequestAsync;
         _submitToolOutputsToStreamAsync = submitToolOutputsToStreamAsync;
-        _getClientRun = getClientRun;
-        _toolCallsAdapter = new(delegates);
+        _toolCallsResolver = new(delegates);
     }
 
     public override ContinuationToken? GetContinuationToken(ClientResult page)
@@ -74,10 +71,10 @@ internal class AsyncStreamingUpdateCollection : AsyncCollectionResult<StreamingU
                 while (await enumerator.MoveNextAsync().ConfigureAwait(false))
                 {
                     var streamingUpdate = enumerator.Current;
-                    if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsAdapter.EnableAutoToolCalls)
+                    if (streamingUpdate is RequiredActionUpdate newActionUpdate && _toolCallsResolver.EnableAutoToolCalls)
                     {
                         toolOutputs.Add(
-                            _toolCallsAdapter.GetResolvedToolOutput(
+                            _toolCallsResolver.GetResolvedToolOutput(
                                 newActionUpdate.FunctionName,
                                 newActionUpdate.ToolCallId,
                                 newActionUpdate.FunctionArguments
