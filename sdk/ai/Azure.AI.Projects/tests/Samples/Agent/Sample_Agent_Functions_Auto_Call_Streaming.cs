@@ -16,24 +16,19 @@ namespace Azure.AI.Projects.Tests;
 
 public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AIProjectsTestEnvironment>
 {
-    private int[] GeHhumidityByAddresses(Dictionary<string, string>[] addresses)
+    private class Address
     {
-        int[] hum = new int[addresses.Length];
-        for (int i = 0; i < addresses.Length; i++)
-        {
-            if (addresses[i].TryGetValue("city", out string city))
-            {
-                hum[i] = (city == "Seattle") ? 60 : 80;
-            }
-            else
-            {
-                throw new ArgumentException("Each address must contain 'street' and 'city' keys.");
-            }
-        }
-        return hum;
+        public string Street { get; set; }
+        public string City { get; set; }
     }
-    private FunctionToolDefinition geHhumidityByAddressesTool = new(
-         name: "GeHhumidityByAddresses",
+
+    private int GetHumidityByAddress(Address address)
+    {
+        return (address.City == "Seattle") ? 60 : 80;
+    }
+
+    private FunctionToolDefinition geHhumidityByAddressTool = new(
+         name: "GetHumidityByAddress",
          description: "Get humidity by street and city",
          parameters: BinaryData.FromObjectAsJson(
          new
@@ -41,31 +36,26 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
              Type = "object",
              Properties = new
              {
-                 Addresses = new
+                 Address = new
                  {
-                     Type = "array",
-                     Description = "A list of addresses",
-                     Items = new
+                     Type = "object",
+                     Properties = new
                      {
-                         Type = "object",
-                         Properties = new
+                         Street = new
                          {
-                             Street = new
-                             {
-                                 Type = "string",
-                                 Description = "Street"
-                             },
-                             City = new
-                             {
-                                 Type = "string",
-                                 Description = "city"
-                             },
+                             Type = "string",
+                             Description = "Street"
                          },
-                         Required = new[] { "street", "city" }
-                     }
+                         City = new
+                         {
+                             Type = "string",
+                             Description = "city"
+                         },
+                     },
+                     Required = new[] { "street", "city" }
                  }
              },
-             Required = new[] { "addresses" }
+             Required = new[] { "address" }
          },
          new JsonSerializerOptions() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
     private string[] GetWeatherByAddresses(Dictionary<string, string>[] addresses, string unit = "F")
@@ -150,7 +140,7 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
                 instructions: "You are a weather bot. Use the provided functions to help answer questions. "
                     + "Customize your responses to the user's preferences as much as possible and use friendly "
                     + "nicknames for cities whenever possible.",
-            tools: [ geHhumidityByAddressesTool, getWeatherByAddressesTool ]
+            tools: [ geHhumidityByAddressTool, getWeatherByAddressesTool ]
         );
         #endregion
         #region Snippet:FunctionsWithStreaming_CreateThread
@@ -165,7 +155,7 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
         List<ToolOutput> toolOutputs = new();
         Dictionary<string, Delegate> delegates = new();
         delegates.Add(nameof(GetWeatherByAddresses), GetWeatherByAddresses);
-        delegates.Add(nameof(GeHhumidityByAddresses), GeHhumidityByAddresses);
+        delegates.Add(nameof(GetHumidityByAddress), GetHumidityByAddress);
         client.EnableAutoFunctionCalls(delegates);
         await foreach (StreamingUpdate streamingUpdate in client.CreateRunStreamingAsync(thread.Id, agent.Id))
         {
@@ -211,7 +201,7 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
                 instructions: "You are a weather bot. Use the provided functions to help answer questions. "
                     + "Customize your responses to the user's preferences as much as possible and use friendly "
                     + "nicknames for cities whenever possible.",
-            tools: [getWeatherByAddressesTool, geHhumidityByAddressesTool]
+            tools: [getWeatherByAddressesTool, geHhumidityByAddressTool]
         );
         #endregion
         #region Snippet:FunctionsWithStreamingSync_CreateThread
@@ -226,7 +216,7 @@ public partial class Sample_Agent_Functions_Auto_Call_Streaming : SamplesBase<AI
         List<ToolOutput> toolOutputs = [];
         Dictionary<string, Delegate> delegates = new();
         delegates.Add(nameof(GetWeatherByAddresses), GetWeatherByAddresses);
-        delegates.Add(nameof(GeHhumidityByAddresses), GeHhumidityByAddresses);
+        delegates.Add(nameof(GetHumidityByAddress), GetHumidityByAddress);
         client.EnableAutoFunctionCalls(delegates);
         CollectionResult<StreamingUpdate> stream = client.CreateRunStreaming(thread.Id, agent.Id);
         foreach (StreamingUpdate streamingUpdate in stream)

@@ -109,6 +109,10 @@ namespace Azure.AI.Projects.Custom.Utility
                 if (element.TryGetInt64(out long val))
                     return val;
             }
+            else if (type == typeof(bool))
+            {
+                return element.GetBoolean();
+            }
             else if (type == typeof(object))
             {
                 return element.GetString() ?? "";
@@ -141,6 +145,10 @@ namespace Azure.AI.Projects.Custom.Utility
                     array.SetValue(val, i++);
                 }
                 return array;
+            }
+            else
+            {
+                return JsonSerializer.Deserialize(element.GetRawText(), type, new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
             }
             throw new ArgumentException($"Received {element.ToString()}, but the argument type in function is {type}");
         }
